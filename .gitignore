@@ -1,0 +1,20 @@
+# Variáveis de ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Ambientes virtuais e cache Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# IDEs e builds locais
+.idea/
+.vscode/
+build/
+dist/
+*.egg-info/
+
+# Logs e estado local de execução (ajuste se tiver algum JSON estático que queira versionar)
+*.log

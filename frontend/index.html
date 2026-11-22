@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portaldot - Multi-Chain Bridge & Swap Engine</title>
+    <!-- Biblioteca Ethers.js v5 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: linear-gradient(135deg, #eef5f9 0%, #f8fafc 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #0f172a;
+            padding: 20px;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 24px;
+            width: 440px;
+            max-width: 100%;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+            border: 1px solid #e2e8f0;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 8px;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f1f5f9;
+            padding: 4px;
+            border-radius: 12px;
+            gap: 4px;
+        }
+
+        .tab {
+            border: none;
+            background: transparent;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .tab.active {
+            background: #6d28d9;
+            color: #ffffff;
+        }
+
+        .network-badge {
+            font-size: 0.75rem;
+            background: #e2e8f0;
+            color: #334155;
+            padding: 5px 9px;
+            border-radius: 8px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .box:focus-within { border-color: #6d28d9; }
+
+        .box-head {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #6d28d9;
+            font-weight: 600;
+            margin-bottom: 8px;
+            gap: 8px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .val-input {
+            border: none;
+            background: transparent;
+            font-size: 1.8rem;
+            font-weight: 700;
+            width: 55%;
+            outline: none;
+            color: #0f172a;
+        }
+
+        .token-btn {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: 0.2s;
+        }
+
+        .token-btn:hover { background: #f1f5f9; }
+
+        .circle {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #6d28d9;
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+
+        .fiat { font-size: 0.8rem; color: #64748b; margin-top: 6px; }
+
+        .chain-select-box {
+            margin-top: 10px;
+            font-size: 0.78rem;
+            color: #475569;
+        }
+
+        .chain-select-box select {
+            width: 100%;
+            padding: 7px 10px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            outline: none;
+            font-weight: 600;
+            margin-top: 4px;
+            color: #0f172a;
+        }
+
+        .swap-divider {
+            display: flex;
+            justify-content: center;
+            margin: -14px 0;
+            position: relative;
+            z-index: 5;
+        }
+
+        .invert-btn {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #6d28d9;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+
+        .invert-btn:hover { transform: rotate(180deg); background: #6d28d9; color: #fff; }
+
+        .btn-action {
+            width: 100%;
+            background: #6d28d9;
+            color: #ffffff;
+            border: none;
+            padding: 16px;
+            border-radius: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn-action:hover { background: #5b21b6; }
+
+        .status-banner {
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            text-align: center;
+            display: none;
+            word-break: break-all;
+        }
+
+        .status-info { background: #e0f2fe; color: #0369a1; }
+        .status-success { background: #dcfce7; color: #15803d; }
+        .status-error { background: #fee2e2; color: #b91c1c; }
+
+        .modal-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(15, 23, 42, 0.4);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal-body {
+            background: #ffffff;
+            border-radius: 20px;
+            width: 380px;
+            padding: 20px;
+            box-shadow: 0 20px 30px rgba(0,0,0,0.15);
+        }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .close-btn { border: none; background: transparent; font-size: 1.2rem; cursor: pointer; color: #64748b; }
+
+        .item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .item:hover { background: #f1f5f9; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="header">
+        <div class="tabs">
+            <button class="tab active" id="tabBridge" onclick="setMode('bridge')">Bridge</button>
+            <button class="tab" id="tabSwap" onclick="setMode('swap')">Swap</button>
+        </div>
+        <span id="networkBadge" class="network-badge">Rede: Não Conectada</span>
+    </div>
+
+    <!-- Origem (Enviar) -->
+    <div class="box">
+        <div class="box-head">
+            <span>Enviar (Origem)</span>
+            <span id="sendBalance">Saldo: --</span>
+        </div>
+        <div class="row">
+            <input type="number" id="sendVal" class="val-input" placeholder="0" min="0" step="any" oninput="handleAmountChange()">
+            <button class="token-btn" onclick="openModal('send')">
+                <span class="circle" id="sBadge">bT</span>
+                <span id="sName">bTEST</span> ▾
+            </button>
+        </div>
+        <div class="fiat" id="sFiat">US$ 0,00</div>
+
+        <!-- Seleção Manual de Rede de Origem -->
+        <div class="chain-select-box" id="sourceChainContainer">
+            <label for="sourceChainSelect">Rede Blockchain de Origem:</label>
+            <select id="sourceChainSelect" onchange="handleSourceChainChange()">
+                <option value="11155111">Ethereum Sepolia (11155111)</option>
+                <option value="421614">Arbitrum Sepolia (421614)</option>
+                <option value="84532">Base Sepolia (84532)</option>
+                <option value="80002" selected>Polygon Amoy (80002)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Inverter Tokens -->
+    <div class="swap-divider">
+        <button class="invert-btn" onclick="invertTokens()">↓</button>
+    </div>
+
+    <!-- Destino (Receber) -->
+    <div class="box" style="margin-top: -8px;">
+        <div class="box-head">
+            <span>Receber (Destino)</span>
+            <span id="receiveBalance">Saldo: --</span>
+        </div>
+        <div class="row">
+            <input type="number" id="recVal" class="val-input" placeholder="0" readonly>
+            <button class="token-btn" onclick="openModal('receive')">
+                <span class="circle" id="rBadge" style="background:#0284c7;">bT</span>
+                <span id="rName">bTEST</span> ▾
+            </button>
+        </div>
+        <div class="fiat" id="rFiat">US$ 0,00</div>
+
+        <!-- Seleção de Rede de Destino (Alinhada ao CHAIN_ID_MAP do Relayer) -->
+        <div class="chain-select-box" id="targetChainContainer">
+            <label for="targetChainSelect">Rede Blockchain de Destino:</label>
+            <select id="targetChainSelect">
+                <option value="11155111">Ethereum Sepolia (11155111)</option>
+                <option value="421614">Arbitrum Sepolia (421614)</option>
+                <option value="84532" selected>Base Sepolia (84532)</option>
+                <option value="80002">Polygon Amoy (80002)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Botão de Ação Principal -->
+    <button id="mainBtn" class="btn-action" onclick="handleMainAction()">Conectar Carteira</button>
+
+    <!-- Banner de Diagnóstico e Estado -->
+    <div id="statusBanner" class="status-banner"></div>
+</div>
+
+<!-- Modal de Seleção de Tokens -->
+<div class="modal-bg" id="tokenModal">
+    <div class="modal-body">
+        <div class="modal-head">
+            <span id="mTitle">Selecionar Token</span>
+            <button class="close-btn" onclick="closeModal()">✕</button>
+        </div>
+
+        <div class="item" onclick="selectToken('bTEST', 'bT')">
+            <span class="circle">bT</span>
+            <div>
+                <strong>bTEST</strong>
+                <div style="font-size:0.75rem; color:#64748b;">Bridge Test Token (Testnet)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ----------------------------------------------------
+    // CONFIGURAÇÕES POR REDE (PORTALDOT TESTNETS)
+    // ----------------------------------------------------
+    const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+
+    const NETWORK_CONTRACTS = {
+        11155111: {
+            name: "Sepolia",
+            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
+            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+        },
+        421614: {
+            name: "Arbitrum Sepolia",
+            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
+            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+        },
+        84532: {
+            name: "Base Sepolia",
+            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
+            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+        },
+        80002: {
+            name: "Polygon Amoy",
+            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
+            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+        }
+    };
+
+    const ERC20_ABI = [
+        "function balanceOf(address owner) view returns (uint256)",
+        "function decimals() view returns (uint8)",
+        "function approve(address spender, uint256 amount) returns (bool)",
+        "function allowance(address owner, address spender) view returns (uint256)"
+    ];
+
+    const BRIDGE_ABI = [
+        "function bridgeTokens(address token, uint256 amount, uint256 targetChainId) external",
+        "function swapTokens(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) external"
+    ];
+
+    let provider, signer, userAddress, currentChainId;
+    let currentMode = 'bridge';
+    let activeModalTarget = 'send';
+    let needsApproval = false;
+
+    let sendToken = { symbol: 'bTEST', badge: 'bT' };
+    let receiveToken = { symbol: 'bTEST', badge: 'bT' };
+
+    function getSelectedSourceChainId() {
+        const el = document.getElementById('sourceChainSelect');
+        return el ? parseInt(el.value, 10) : currentChainId;
+    }
+
+    function getActiveNetworkConfig() {
+        const chainId = getSelectedSourceChainId() || currentChainId;
+        if (!chainId) return null;
+        return NETWORK_CONTRACTS[chainId] || null;
+    }
+
+    function isValidAddress(addr) {
+        return Boolean(addr && addr !== ZERO_ADDR && ethers.utils.isAddress(addr));
+    }
+
+    function syncSourceSelectToChain(chainId) {
+        if (!chainId || !NETWORK_CONTRACTS[chainId]) return;
+        const selectEl = document.getElementById('sourceChainSelect');
+        if (selectEl && parseInt(selectEl.value, 10) !== chainId) {
+            selectEl.value = String(chainId);
+        }
+    }
+
+    async function switchWalletToChain(targetChainId) {
+        if (!window.ethereum || !targetChainId) return false;
+        const hexChainId = "0x" + Number(targetChainId).toString(16);
+        try {
+            await window.ethereum.request({
+                method: "wallet_switchEthereumChain",
+                params: [{ chainId: hexChainId }]
+            });
+            return true;
+        } catch (err) {
+            handleWeb3Error(err, `Não foi possível trocar para a rede ${targetChainId}`);
+            return false;
+        }
+    }
+
+    async function handleSourceChainChange() {
+        const selectedChainId = getSelectedSourceChainId();
+        const netCfg = NETWORK_CONTRACTS[selectedChainId];
+
+        if (userAddress && window.ethereum && currentChainId !== selectedChainId) {
+            showStatus(`Solicitando troca na carteira para ${netCfg ? netCfg.name : selectedChainId}...`, "info");
+            const switched = await switchWalletToChain(selectedChainId);
+            if (!switched) {
+                syncSourceSelectToChain(currentChainId);
+                return;
+            }
+        }
+
+        await refreshSessionState(false);
+    }
+
+    async function refreshSessionState(showConnectedMessage) {
+        if (!window.ethereum) return;
+
+        provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+        const accounts = await provider.listAccounts();
+        if (!accounts || accounts.length === 0) {
+            userAddress = null;
+            signer = null;
+            currentChainId = null;
+            const selChainId = getSelectedSourceChainId();
+            const selCfg = NETWORK_CONTRACTS[selChainId];
+            document.getElementById('networkBadge').innerText =
+                selCfg ? `Origem: ${selCfg.name}` : "Rede: Não Conectada";
+            updateButtonState();
+            return;
+        }
+
+        signer = provider.getSigner();
+        userAddress = await signer.getAddress();
+
+        const chainIdHex = await window.ethereum.request({ method: "eth_chainId" });
+        currentChainId = parseInt(chainIdHex, 16);
+
+        const selectedChainId = getSelectedSourceChainId();
+        const activeChainId = selectedChainId || currentChainId;
+        const netCfg = NETWORK_CONTRACTS[activeChainId];
+
+        const badge = document.getElementById('networkBadge');
+        if (!netCfg) {
+            badge.innerText = `Chain ID: ${currentChainId}`;
+            showStatus(`Rede ${currentChainId} não configurada. Selecione uma das 4 testnets.`, "error");
+        } else if (currentChainId !== selectedChainId) {
+            badge.innerText = `${netCfg.name} (Carteira: ${currentChainId})`;
+            showStatus(`Origem selecionada: ${netCfg.name}. Confirme a troca de rede na carteira para assinar.`, "info");
+        } else {
+            badge.innerText = `${netCfg.name} (${currentChainId})`;
+            if (showConnectedMessage) {
+                showStatus(`Carteira ligada: ${userAddress.substring(0, 6)}...${userAddress.substring(38)}`, "success");
+            }
+        }
+
+        await updateBalances();
+        await checkAllowance();
+        updateButtonState();
+    }
+
+    async function connectWallet() {
+        showStatus("A conectar à carteira...", "info");
+        if (!window.ethereum) {
+            showStatus("Nenhuma carteira Web3 encontrada. Instale a MetaMask.", "error");
+            return;
+        }
+
+        try {
+            const tempProvider = new ethers.providers.Web3Provider(window.ethereum, "any");
+            await tempProvider.send("eth_requestAccounts", []);
+
+            const chainIdHex = await window.ethereum.request({ method: "eth_chainId" });
+            const walletChainId = parseInt(chainIdHex, 16);
+            const selectedChainId = getSelectedSourceChainId();
+
+            if (selectedChainId && NETWORK_CONTRACTS[selectedChainId] && walletChainId !== selectedChainId) {
+                await switchWalletToChain(selectedChainId);
+            } else if (NETWORK_CONTRACTS[walletChainId]) {
+                syncSourceSelectToChain(walletChainId);
+            }
+
+            await refreshSessionState(true);
+        } catch (err) {
+            handleWeb3Error(err, "Erro ao conectar à carteira");
+        }
+    }
+
+    async function handleMainAction() {
+        if (!userAddress) {
+            await connectWallet();
+            return;
+        }
+
+        const sourceChainId = getSelectedSourceChainId();
+        const netCfg = NETWORK_CONTRACTS[sourceChainId] || getActiveNetworkConfig();
+        if (!netCfg) {
+            showStatus("Rede atual não suportada. Selecione Sepolia, Arbitrum Sepolia, Base Sepolia ou Polygon Amoy.", "error");
+            return;
+        }
+
+        if (currentChainId !== sourceChainId) {
+            showStatus(`Trocando carteira para ${netCfg.name}...`, "info");
+            const switched = await switchWalletToChain(sourceChainId);
+            await refreshSessionState(false);
+            if (!switched || currentChainId !== sourceChainId) {
+                return;
+            }
+        }
+
+        const amountInput = document.getElementById('sendVal').value.trim();
+        if (!amountInput || isNaN(amountInput)) {
+            showStatus("Insira um valor numérico válido.", "error");
+            return;
+        }
+
+        const numericAmount = parseFloat(amountInput);
+        if (numericAmount <= 0) {
+            showStatus("O valor deve ser maior que zero.", "error");
+            return;
+        }
+
+        if (!isValidAddress(netCfg.token) || !isValidAddress(netCfg.bridge)) {
+            showStatus(`Endereços de token/bridge não configurados para a rede ${netCfg.name} no index.html.`, "error");
+            return;
+        }
+
+        let amountWei;
+        try {
+            amountWei = ethers.utils.parseEther(amountInput);
+        } catch (e) {
+            showStatus("Erro de formatação na conversão de unidades.", "error");
+            return;
+        }
+
+        try {
+            if (needsApproval) {
+                showStatus(`A solicitar aprovação de ${sendToken.symbol} na carteira...`, "info");
+                const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, signer);
+                const tx = await tokenContract.approve(netCfg.bridge, amountWei);
+
+                showStatus(`Aprovação enviada! Aguardando confirmação... Hash: ${tx.hash.substring(0, 12)}...`, "info");
+                await tx.wait();
+
+                showStatus("Aprovação confirmada na blockchain!", "success");
+                needsApproval = false;
+                updateButtonState();
+            } else {
+                const bridgeContract = new ethers.Contract(netCfg.bridge, BRIDGE_ABI, signer);
+
+                if (currentMode === 'bridge') {
+                    const targetChainId = parseInt(document.getElementById('targetChainSelect').value, 10);
+                    if (targetChainId === sourceChainId) {
+                        showStatus("Selecione uma rede de destino diferente da rede de origem.", "error");
+                        return;
+                    }
+
+                    showStatus(`A enviar ${amountInput} ${sendToken.symbol} para a Bridge (Origem: ${sourceChainId} → Destino: ${targetChainId})...`, "info");
+                    const tx = await bridgeContract.bridgeTokens(netCfg.token, amountWei, targetChainId);
+                    await tx.wait();
+                    showStatus(`Bridge confirmada na origem! O Relayer entregará no destino. Hash: ${tx.hash}`, "success");
+                    await updateBalances();
+                    await checkAllowance();
+                } else {
+                    const minOut = amountWei.mul(995).div(1000);
+                    showStatus("A enviar transação para o Pool de Swap...", "info");
+                    const tx = await bridgeContract.swapTokens(netCfg.token, netCfg.token, amountWei, minOut);
+                    await tx.wait();
+                    showStatus(`Swap executado com sucesso! Hash: ${tx.hash}`, "success");
+                    await updateBalances();
+                }
+            }
+        } catch (err) {
+            handleWeb3Error(err, "Falha ao processar a transação");
+        }
+    }
+
+    async function checkAllowance() {
+        const netCfg = getActiveNetworkConfig();
+        if (!userAddress || !provider || !netCfg || !isValidAddress(netCfg.token) || !isValidAddress(netCfg.bridge)) {
+            needsApproval = false;
+            updateButtonState();
+            return;
+        }
+
+        const amountInput = document.getElementById('sendVal').value.trim();
+        const numericAmount = parseFloat(amountInput);
+
+        if (!amountInput || isNaN(numericAmount) || numericAmount <= 0) {
+            needsApproval = false;
+            updateButtonState();
+            return;
+        }
+
+        try {
+            const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
+            const allowance = await tokenContract.allowance(userAddress, netCfg.bridge);
+            const amountWei = ethers.utils.parseEther(amountInput);
+            needsApproval = allowance.lt(amountWei);
+            updateButtonState();
+        } catch (e) {
+            needsApproval = false;
+            updateButtonState();
+        }
+    }
+
+    async function updateBalances() {
+        const netCfg = getActiveNetworkConfig();
+        if (!userAddress || !provider || !netCfg || !isValidAddress(netCfg.token)) {
+            document.getElementById('sendBalance').innerText = "Saldo: --";
+            document.getElementById('receiveBalance').innerText = "Saldo: --";
+            return;
+        }
+
+        try {
+            const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
+            const rawBal = await tokenContract.balanceOf(userAddress);
+            const formatted = parseFloat(ethers.utils.formatEther(rawBal)).toLocaleString("pt-BR", {
+                maximumFractionDigits: 4
+            });
+            document.getElementById('sendBalance').innerText = `Saldo: ${formatted} ${sendToken.symbol}`;
+            document.getElementById('receiveBalance').innerText = `Saldo: ${formatted} ${receiveToken.symbol}`;
+        } catch (e) {
+            document.getElementById('sendBalance').innerText = "Saldo: erro RPC";
+        }
+    }
+
+    function handleWeb3Error(err, defaultPrefix) {
+        console.error(err);
+        if (err.code === 4001 || err.code === "ACTION_REJECTED" || (err.message && err.message.includes("user rejected"))) {
+            showStatus("Ação cancelada na carteira.", "error");
+            return;
+        }
+        if (err.code === "INSUFFICIENT_FUNDS" || (err.message && err.message.includes("insufficient funds"))) {
+            showStatus("Saldo insuficiente para cobrir o valor e a taxa de gás da rede.", "error");
+            return;
+        }
+        if (err.code === "CALL_EXCEPTION") {
+            showStatus("Reversão no Smart Contract. Verifique allowance, saldo ou liquidez do contrato.", "error");
+            return;
+        }
+        showStatus(`${defaultPrefix}: ${err.reason || err.message || "Erro desconhecido"}`, "error");
+    }
+
+    function updateButtonState() {
+        const btn = document.getElementById('mainBtn');
+        if (!userAddress) {
+            btn.innerText = "Conectar Carteira";
+            btn.style.background = "#6d28d9";
+            return;
+        }
+
+        const amountInput = document.getElementById('sendVal').value.trim();
+        const numericAmount = parseFloat(amountInput);
+
+        if (!amountInput || isNaN(numericAmount) || numericAmount <= 0) {
+            btn.innerText = "Insira um valor válido";
+            btn.style.background = "#94a3b8";
+            return;
+        }
+
+        if (needsApproval) {
+            btn.innerText = `1. Aprovar ${sendToken.symbol}`;
+            btn.style.background = "#d97706";
+        } else {
+            btn.innerText = currentMode === 'bridge' ? "2. Executar Bridge" : "2. Executar Swap";
+            btn.style.background = "#059669";
+        }
+    }
+
+    function handleAmountChange() {
+        const valInput = document.getElementById('sendVal').value.trim();
+        const v = parseFloat(valInput);
+
+        if (isNaN(v) || v <= 0) {
+            document.getElementById('recVal').value = '';
+            document.getElementById('sFiat').innerText = 'US$ 0,00';
+            document.getElementById('rFiat').innerText = 'US$ 0,00';
+            if (v < 0) {
+                showStatus("Números negativos não são permitidos.", "error");
+            } else {
+                hideStatus();
+            }
+        } else {
+            hideStatus();
+            document.getElementById('recVal').value = (v * 0.998).toFixed(4);
+            document.getElementById('sFiat').innerText = `US$ ${v.toFixed(2)}`;
+            document.getElementById('rFiat').innerText = `US$ ${(v * 0.998).toFixed(2)}`;
+        }
+        checkAllowance();
+    }
+
+    function invertTokens() {
+        const temp = { ...sendToken };
+        sendToken = { ...receiveToken };
+        receiveToken = { ...temp };
+
+        document.getElementById('sName').innerText = sendToken.symbol;
+        document.getElementById('sBadge').innerText = sendToken.badge;
+        document.getElementById('rName').innerText = receiveToken.symbol;
+        document.getElementById('rBadge').innerText = receiveToken.badge;
+
+        handleAmountChange();
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('tabBridge').classList.toggle('active', mode === 'bridge');
+        document.getElementById('tabSwap').classList.toggle('active', mode === 'swap');
+        document.getElementById('targetChainContainer').style.display = mode === 'bridge' ? 'block' : 'none';
+        updateButtonState();
+    }
+
+    function openModal(t) {
+        activeModalTarget = t;
+        document.getElementById('mTitle').innerText = t === 'send' ? 'Trocar de (Enviar)' : 'Para (Receber)';
+        document.getElementById('tokenModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('tokenModal').style.display = 'none';
+    }
+
+    function selectToken(symbol, badge) {
+        if (activeModalTarget === 'send') {
+            sendToken = { symbol, badge };
+            document.getElementById('sName').innerText = symbol;
+            document.getElementById('sBadge').innerText = badge;
+        } else {
+            receiveToken = { symbol, badge };
+            document.getElementById('rName').innerText = symbol;
+            document.getElementById('rBadge').innerText = badge;
+        }
+        closeModal();
+        updateBalances();
+        handleAmountChange();
+    }
+
+    function showStatus(msg, type) {
+        const banner = document.getElementById('statusBanner');
+        banner.style.display = 'block';
+        banner.className = `status-banner status-${type}`;
+        banner.innerText = msg;
+    }
+
+    function hideStatus() {
+        const banner = document.getElementById('statusBanner');
+        banner.style.display = 'none';
+    }
+
+    if (window.ethereum) {
+        window.ethereum.on("chainChanged", () => {
+            refreshSessionState(false);
+        });
+        window.ethereum.on("accountsChanged", () => {
+            refreshSessionState(false);
+        });
+        window.addEventListener("DOMContentLoaded", () => {
+            refreshSessionState(false);
+        });
+    }
+</script>
+
+</body>
+</html>

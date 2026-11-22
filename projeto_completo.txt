@@ -1,0 +1,776 @@
+﻿
+==================== ARQUIVO: projeto_completo.txt ====================
+
+
+==================== ARQUIVO: README.md ====================
+# EVM Modular Cross-Chain Bridge & Swap Engine
+
+A professional, EVM-agnostic, multi-network **Bridge & Swap Engine** designed for high-performance token transfers and liquidity routing across EVM compatible networks (including Portaldot V3 Testnet, Ethereum Sepolia, Polygon, and local EVM nodes).
+
+---
+
+## ðŸ—ï¸ Architecture Overview
+
+The application adopts a **Modular Adapter Pattern** separating Smart Contracts, Relayer Execution Engines, Network Configurations, and User Interfaces:
+
+```text
+portaldot-bridge-swap/
+â”œâ”€â”€ contracts/             # Solidity v0.8.20 Contracts & Python ABIs
+â”‚   â”œâ”€â”€ BridgeSwap.sol     # Central Lock, Release & Swap Smart Contract
+â”‚   â”œâ”€â”€ Token.sol          # Mintable ERC-20 Test Token
+â”‚   â”œâ”€â”€ bridge_interface.py# Bridge Contract ABI Mapping
+â”‚   â””â”€â”€ token_interface.py # ERC-20 Token ABI Mapping
+â”œâ”€â”€ core/                  # EVM Multi-Network Core Provider
+â”‚   â””â”€â”€ connection.py      # Resilient Web3 Connector
+â”œâ”€â”€ scripts/               # Automation & Relayer Scripts
+â”‚   â”œâ”€â”€ deploy.py          # Automated Contract Compiler & Deployer
+â”‚   â”œâ”€â”€ run_bridge.py      # Event-driven Relayer Engine (Web3 Event Listener)
+â”‚   â”œâ”€â”€ simulate_flow.py   # End-to-End Execution Simulator
+â”‚   â””â”€â”€ test_connection.py # Multi-Network RPC Health Checker
+â”œâ”€â”€ utils/                 # Application Configuration & Network Registry
+â”‚   â””â”€â”€ config.py          # Centralized Network Environment Registry
+â”œâ”€â”€ frontend/              # Web3 Front-End Interface
+â”‚   â””â”€â”€ index.html         # Minimalist Ethers.js DApp User Interface
+â””â”€â”€ .env                   # Environment Private Key and RPC URLs
+
+==================== ARQUIVO: requirements.txt ====================
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.4
+aiosignal==1.4.0
+annotated-types==0.8.0
+attrs==26.1.0
+bitarray==3.11.0
+certifi==2026.7.22
+charset-normalizer==3.5.2
+ckzg==2.1.8
+cytoolz==1.1.0
+eth-account==0.14.0
+eth-hash==0.8.0
+eth-keyfile==0.10.0
+eth-keys==0.8.0
+eth-rlp==3.0.0
+eth-typing==6.0.0
+eth-utils==6.0.0
+eth_abi==6.0.0
+frozenlist==1.8.0
+hexbytes==2.0.0
+idna==3.20
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+lru-dict==1.4.1
+multidict==6.9.1
+packaging==26.3
+parsimonious==0.10.0
+propcache==0.5.4
+protobuf==7.36.2
+py-ecc==8.0.0
+py-solc-x==2.0.5
+pycryptodome==3.24.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+python-dotenv==1.2.4
+pyunormalize==18.0.0
+pywin32==312
+referencing==0.37.0
+regex==2026.9.29
+requests==2.34.2
+rlp==5.0.0
+rpds-py==2026.9.1
+setuptools==84.0.0
+toolz==1.1.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.8.0
+web3==8.0.0
+websockets==17.2
+yarl==1.25.1
+
+
+==================== ARQUIVO: contracts\BridgeSwap.sol ====================
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/**
+ * @title BridgeSwap
+ * @dev Contrato inteligente genÃ©rico e modular para gerir operaÃ§Ãµes de Bridge e Swap em redes EVM.
+ */
+interface IERC20 {
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}
+
+contract BridgeSwap {
+    address public owner;
+
+    // Mapeamento para registar liquidez bloqueada por token
+    mapping(address => uint256) public lockedLiquidity;
+
+    event TokensBridged(
+        address indexed sender,
+        address indexed token,
+        uint256 amount,
+        uint256 targetChainId,
+        uint256 timestamp
+    );
+
+    event TokensSwapped(
+        address indexed user,
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 amountIn,
+        uint256 amountOut
+    );
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Apenas o proprietario pode executar esta acao");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    /**
+     * @dev Bloqueia tokens na rede atual para posterior liberacao na rede de destino.
+     */
+    function bridgeTokens(address token, uint256 amount, uint256 targetChainId) external {
+        require(amount > 0, "A quantidade deve ser maior que zero");
+
+        IERC20 tokenContract = IERC20(token);
+
+        bool success = tokenContract.transferFrom(msg.sender, address(this), amount);
+        require(success, "Falha na transferencia dos tokens para a bridge");
+
+        lockedLiquidity[token] += amount;
+
+        emit TokensBridged(msg.sender, token, amount, targetChainId, block.timestamp);
+    }
+
+    /**
+     * @dev Executa a troca de um token por outro disponivel no pool do contrato.
+     */
+    function swapTokens(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) external {
+        require(amountIn > 0, "Quantidade de entrada invalida");
+
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+
+        uint256 amountOut = minAmountOut;
+
+        require(IERC20(tokenOut).balanceOf(address(this)) >= amountOut, "Liquidez insuficiente para swap");
+        IERC20(tokenOut).transfer(msg.sender, amountOut);
+
+        emit TokensSwapped(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
+    }
+
+    /**
+     * @dev Permite ao owner retirar fundos de emergencia ou ajustar liquidez.
+     */
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        IERC20(token).transfer(owner, amount);
+    }
+}
+
+==================== ARQUIVO: contracts\bridge_interface.py ====================
+"""
+MÃ³dulo de Contratos: Armazena a ABI genÃ©rica e o endereÃ§o oficial da BridgeSwap.
+"""
+
+BRIDGE_ABI = [
+    # --- FUNÃ‡Ã•ES DE ESCRITA (Write) ---
+    {
+        "inputs": [
+            {"internalType": "address", "name": "token", "type": "address"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"},
+            {"internalType": "uint256", "name": "targetChainId", "type": "uint256"}
+        ],
+        "name": "bridgeTokens",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "tokenIn", "type": "address"},
+            {"internalType": "address", "name": "tokenOut", "type": "address"},
+            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+            {"internalType": "uint256", "name": "minAmountOut", "type": "uint256"}
+        ],
+        "name": "swapTokens",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "token", "type": "address"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"}
+        ],
+        "name": "emergencyWithdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+
+    # --- FUNÃ‡Ã•ES DE LEITURA (View/Read) ---
+    {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "name": "lockedLiquidity",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+
+    # --- EVENTOS (Escutados pelo Relayer Python) ---
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "internalType": "address", "name": "sender", "type": "address"},
+            {"indexed": True, "internalType": "address", "name": "token", "type": "address"},
+            {"indexed": False, "internalType": "uint256", "name": "amount", "type": "uint256"},
+            {"indexed": False, "internalType": "uint256", "name": "targetChainId", "type": "uint256"},
+            {"indexed": False, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
+        ],
+        "name": "TokensBridged",
+        "type": "event"
+    },
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "internalType": "address", "name": "user", "type": "address"},
+            {"indexed": True, "internalType": "address", "name": "tokenIn", "type": "address"},
+            {"indexed": True, "internalType": "address", "name": "tokenOut", "type": "address"},
+            {"indexed": False, "internalType": "uint256", "name": "amountIn", "type": "uint256"},
+            {"indexed": False, "internalType": "uint256", "name": "amountOut", "type": "uint256"}
+        ],
+        "name": "TokensSwapped",
+        "type": "event"
+    }
+]
+
+# EndereÃ§o temporÃ¡rio de testes (atualizar apÃ³s o deploy)
+BRIDGE_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+==================== ARQUIVO: contracts\Token.sol ====================
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/**
+ * @title TestToken
+ * @dev Token ERC-20 completo para simulaÃ§Ã£o de liquidez, pontes e swaps.
+ */
+contract TestToken {
+    string public name;
+    string public symbol;
+    uint8 public decimals = 18;
+    uint256 public totalSupply;
+
+    address public owner;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Apenas o proprietario pode cunhar tokens");
+        _;
+    }
+
+    constructor(string memory _name, string memory _symbol, uint256 initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        owner = msg.sender;
+
+        // Cunhar suprimento inicial para o criador
+        mint(msg.sender, initialSupply * 10**uint256(decimals));
+    }
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "Saldo insuficiente");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function approve(address spender, uint256 amount) public returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
+        require(balanceOf[from] >= amount, "Saldo insuficiente");
+        require(allowance[from][msg.sender] >= amount, "Allowance/Aprovacao insuficiente");
+
+        balanceOf[from] -= amount;
+        allowance[from][msg.sender] -= amount;
+        balanceOf[to] += amount;
+
+        emit Transfer(from, to, amount);
+        return true;
+    }
+
+    /**
+     * @dev FunÃ§Ã£o para criar novos tokens de teste sob demanda.
+     */
+    function mint(address to, uint256 amount) public onlyOwner {
+        totalSupply += amount;
+        balanceOf[to] += amount;
+        emit Transfer(address(0), to, amount);
+    }
+}
+
+==================== ARQUIVO: contracts\token_interface.py ====================
+"""
+MÃ³dulo de Contratos: ABI padrÃ£o do Token ERC-20 para aprovaÃ§Ãµes e transferÃªncias.
+"""
+
+TOKEN_ABI = [
+    # --- FUNÃ‡Ã•ES DE ESCRITA ---
+    {
+        "inputs": [
+            {"internalType": "address", "name": "spender", "type": "address"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"}
+        ],
+        "name": "approve",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "to", "type": "address"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"}
+        ],
+        "name": "transfer",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "to", "type": "address"},
+            {"internalType": "uint256", "name": "amount", "type": "uint256"}
+        ],
+        "name": "mint",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+
+    # --- FUNÃ‡Ã•ES DE LEITURA ---
+    {
+        "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "owner", "type": "address"},
+            {"internalType": "address", "name": "spender", "type": "address"}
+        ],
+        "name": "allowance",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
+==================== ARQUIVO: contracts\__init__.py ====================
+
+
+==================== ARQUIVO: core\connection.py ====================
+import logging
+from web3 import Web3
+from utils.config import NETWORKS, PRIVATE_KEY
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("BlockchainConnection")
+
+
+class BlockchainConnection:
+    """Gerencia a conexÃ£o com qualquer rede EVM."""
+
+    def __init__(self, network_name: str) -> None:
+        if network_name not in NETWORKS:
+            raise ValueError(f"Rede {network_name} nÃ£o configurada no config.py")
+
+        self.rpc_url = NETWORKS[network_name]["rpc"]
+        self.private_key = PRIVATE_KEY
+        self.w3 = self._initialize_connection(network_name)
+
+    def _initialize_connection(self, network_name: str) -> Web3:
+        logger.info(f"A conectar Ã  rede {network_name}...")
+        w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+
+        if not w3.is_connected():
+            logger.error(f"Falha ao conectar Ã  rede {network_name}.")
+            raise ConnectionError(f"Sem ligaÃ§Ã£o a {network_name}.")
+
+        logger.info(f"ConexÃ£o a {network_name} estabelecida!")
+        return w3
+
+    def get_web3(self) -> Web3:
+        return self.w3
+
+==================== ARQUIVO: core\__init__.py ====================
+
+
+==================== ARQUIVO: scripts\deploy.py ====================
+import os
+import sys
+import logging
+from solcx import compile_standard, install_solc
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.connection import BlockchainConnection
+from utils.config import NETWORKS
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("DeployEngine")
+
+# Instala a versÃ£o correta do compilador Solidity
+install_solc("0.8.20")
+
+
+def compile_contract(file_path: str, contract_name: str):
+    logger.info(f"A compilar o contrato {contract_name}...")
+    with open(file_path, "r", encoding="utf-8") as f:
+        source_code = f.read()
+
+    compiled_sol = compile_standard(
+        {
+            "language": "Solidity",
+            "sources": {file_path: {"content": source_code}},
+            "settings": {
+                "outputSelection": {
+                    "*": {"*": ["abi", "evm.bytecode"]}
+                }
+            },
+        },
+        solc_version="0.8.20",
+    )
+
+    bytecode = compiled_sol["contracts"][file_path][contract_name]["evm"]["bytecode"]["object"]
+    abi = compiled_sol["contracts"][file_path][contract_name]["abi"]
+    return abi, bytecode
+
+
+def deploy_contract(network_name: str, abi, bytecode, *constructor_args):
+    conn = BlockchainConnection(network_name)
+    w3 = conn.get_web3()
+    account = w3.eth.account.from_key(conn.private_key)
+
+    contract = w3.eth.contract(abi=abi, bytecode=bytecode)
+
+    logger.info(f"A enviar transaÃ§Ã£o de deploy para a rede: {network_name}...")
+    tx = contract.constructor(*constructor_args).build_transaction({
+        "from": account.address,
+        "nonce": w3.eth.get_transaction_count(account.address),
+        "gasPrice": w3.eth.gas_price,
+    })
+
+    signed_tx = w3.eth.account.sign_transaction(tx, conn.private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    logger.info(f"TransaÃ§Ã£o enviada! Hash: {tx_hash.hex()}")
+
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    logger.info(f"[âœ“] Contrato implantado com sucesso em: {tx_receipt.contractAddress}")
+    return tx_receipt.contractAddress
+
+
+def run_full_deploy(target_network: str):
+    logger.info(f"=== INICIANDO DEPLOY COMPLETO NA REDE {target_network} ===")
+
+    # 1. Deploy do Token ERC-20 de Teste
+    token_abi, token_bytecode = compile_contract("contracts/Token.sol", "TestToken")
+    token_address = deploy_contract(target_network, token_abi, token_bytecode, "Portaldot Test Token", "pTEST", 1000000)
+
+    # 2. Deploy do Contrato BridgeSwap
+    bridge_abi, bridge_bytecode = compile_contract("contracts/BridgeSwap.sol", "BridgeSwap")
+    bridge_address = deploy_contract(target_network, bridge_abi, bridge_bytecode)
+
+    print("\n" + "=" * 60)
+    print("ANOTE OS ENDEREÃ‡OS GERADOS PARA O SEU CONFIG.PY / .ENV:")
+    print(f"TOKEN_CONTRACT_ADDRESS = \"{token_address}\"")
+    print(f"BRIDGE_CONTRACT_ADDRESS = \"{bridge_address}\"")
+    print("=" * 60 + "\n")
+
+
+if __name__ == "__main__":
+    # Altere para a rede desejada configurada no utils/config.py
+    run_full_deploy("portaldot_v3")
+
+==================== ARQUIVO: scripts\interact_contract.py ====================
+import os
+import sys
+
+# Garante que o Python encontra os mÃ³dulos das pastas core e utils
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from web3 import Web3
+from core.connection import BlockchainConnection
+from utils.config import NETWORKS
+
+# Interface/ABI temporÃ¡ria para carregamento de testes
+# Substituir pela ABI real importada de contracts/ quando compilar os contratos
+SAMPLE_BRIDGE_ABI = [
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "name",
+        "outputs": [{"name": "", "type": "string"}],
+        "payable": False,
+        "stateMutability": "view",
+        "type": "function",
+    }
+]
+
+
+def interact_with_network(network_name: str):
+    print(f"--- INTERAÃ‡ÃƒO COM CONTRATO NA REDE: {network_name} ---")
+
+    # 1. Instancia a conexÃ£o dinÃ¢mica com a rede escolhida
+    try:
+        conn = BlockchainConnection(network_name)
+        w3 = conn.get_web3()
+    except Exception as e:
+        print(f"[âœ—] NÃ£o foi possÃ­vel conectar Ã  rede {network_name}: {e}")
+        return
+
+    # 2. Procura o endereÃ§o do contrato configurado para esta rede
+    raw_address = NETWORKS[network_name].get("bridge_contract")
+
+    if not raw_address or raw_address == "0x0000000000000000000000000000000000000000":
+        print(f"[!] Contrato de Bridge ainda nÃ£o configurado para a rede {network_name}.")
+        print("Atualize o endereÃ§o em utils/config.py assim que realizar o deploy.")
+        return
+
+    # 3. Converte para o formato checksum aceito pelo Web3
+    contract_address = Web3.to_checksum_address(raw_address)
+
+    # 4. Instancia o contrato
+    bridge_contract = w3.eth.contract(address=contract_address, abi=SAMPLE_BRIDGE_ABI)
+
+    print(f"[âœ“] Contrato instanciado com sucesso no endereÃ§o: {contract_address}")
+    print("Pronto para executar chamadas de leitura (read) ou transaÃ§Ãµes assinadas (write)!\n")
+
+
+if __name__ == "__main__":
+    # Exemplo testando a chamada na Portaldot
+    interact_with_network("portaldot_v3")
+
+==================== ARQUIVO: scripts\run_bridge.py ====================
+import os
+import sys
+import time
+import logging
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.connection import BlockchainConnection
+from utils.config import NETWORKS
+from contracts.bridge_interface import BRIDGE_ABI
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("PortaldotRelayer")
+
+
+def start_relayer_listener(source_network: str):
+    logger.info(f"--- A iniciar motor Relayer na rede: {source_network} ---")
+
+    try:
+        conn = BlockchainConnection(source_network)
+        w3 = conn.get_web3()
+    except Exception as e:
+        logger.error(f"NÃ£o foi possÃ­vel conectar Ã  rede {source_network}: {e}")
+        return
+
+    contract_addr = NETWORKS[source_network].get("bridge_contract")
+
+    if not contract_addr or contract_addr == "0x0000000000000000000000000000000000000000":
+        logger.warning(f"Contrato nÃ£o configurado em utils/config.py para a rede {source_network}.")
+        return
+
+    bridge_contract = w3.eth.contract(
+        address=w3.to_checksum_address(contract_addr),
+        abi=BRIDGE_ABI
+    )
+
+    logger.info("Relayer ativo e escutando eventos 'TokensBridged'...")
+
+    # Filtro para escutar eventos na blockchain
+    event_filter = bridge_contract.events.TokensBridged.create_filter(from_block="latest")
+
+    while True:
+        try:
+            for event in event_filter.get_new_entries():
+                sender = event["args"]["sender"]
+                token = event["args"]["token"]
+                amount = event["args"]["amount"]
+                target_chain = event["args"]["targetChainId"]
+                timestamp = event["args"]["timestamp"]
+
+                logger.info(f"[!] NOVO BRIDGE DETETADO!")
+                logger.info(f"    Origem: {sender} | Token: {token}")
+                logger.info(f"    Valor: {w3.from_wei(amount, 'ether')} | Destino Chain ID: {target_chain}")
+
+            time.sleep(3)
+        except Exception as e:
+            logger.error(f"Erro na escuta de blocos: {e}")
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    start_relayer_listener("portaldot_v3")
+
+==================== ARQUIVO: scripts\simulate_flow.py ====================
+import os
+import sys
+import logging
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.connection import BlockchainConnection
+from utils.config import NETWORKS
+from contracts.token_interface import TOKEN_ABI
+from contracts.bridge_interface import BRIDGE_ABI
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("SimulatorEngine")
+
+
+def simulate_bridge_and_swap(network_name: str, token_addr: str, bridge_addr: str, amount_tokens: float):
+    conn = BlockchainConnection(network_name)
+    w3 = conn.get_web3()
+    account = w3.eth.account.from_key(conn.private_key)
+
+    token_contract = w3.eth.contract(address=w3.to_checksum_address(token_addr), abi=TOKEN_ABI)
+    bridge_contract = w3.eth.contract(address=w3.to_checksum_address(bridge_addr), abi=BRIDGE_ABI)
+
+    amount_wei = w3.to_wei(amount_tokens, "ether")
+
+    # 1. Passo: AprovaÃ§Ã£o ERC-20 (Approve)
+    logger.info(f"1. A aprovar {amount_tokens} pTEST para o contrato de Bridge...")
+    approve_tx = token_contract.functions.approve(bridge_addr, amount_wei).build_transaction({
+        "from": account.address,
+        "nonce": w3.eth.get_transaction_count(account.address),
+        "gasPrice": w3.eth.gas_price,
+    })
+    signed_approve = w3.eth.account.sign_transaction(approve_tx, conn.private_key)
+    tx_approve_hash = w3.eth.send_raw_transaction(signed_approve.rawTransaction)
+    w3.eth.wait_for_transaction_receipt(tx_approve_hash)
+    logger.info(f"[âœ“] AprovaÃ§Ã£o confirmada! Hash: {tx_approve_hash.hex()}")
+
+    # 2. Passo: ExecuÃ§Ã£o do Bridge (bridgeTokens)
+    logger.info("2. A executar o trancamento de tokens (bridgeTokens)...")
+    target_chain_id = 11155111  # Exemplo: Sepolia Testnet
+    bridge_tx = bridge_contract.functions.bridgeTokens(token_addr, amount_wei, target_chain_id).build_transaction({
+        "from": account.address,
+        "nonce": w3.eth.get_transaction_count(account.address),
+        "gasPrice": w3.eth.gas_price,
+    })
+    signed_bridge = w3.eth.account.sign_transaction(bridge_tx, conn.private_key)
+    tx_bridge_hash = w3.eth.send_raw_transaction(signed_bridge.rawTransaction)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_bridge_hash)
+    logger.info(f"[âœ“] Tokens trancados na Bridge com sucesso! Hash: {tx_bridge_hash.hex()}")
+
+
+if __name__ == "__main__":
+    # Substituir pelos endereÃ§os gerados apÃ³s o deploy
+    TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000"
+    BRIDGE_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+    simulate_bridge_and_swap("portaldot_v3", TOKEN_ADDRESS, BRIDGE_ADDRESS, 10.0)
+
+==================== ARQUIVO: scripts\test_connection.py ====================
+import os
+import sys
+
+# Garante que o Python encontra os mÃ³dulos das pastas core e utils
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.connection import BlockchainConnection
+from utils.config import NETWORKS
+
+
+def test_all_connections():
+    print("--- TESTE DE CONEXÃƒO MULTI-REDE (PORTALDOT & OUTRAS) ---\n")
+
+    for network_name in NETWORKS:
+        print(f"=== Testando Rede: {network_name} ===")
+        try:
+            # Instancia a conexÃ£o com a rede iterada
+            conn = BlockchainConnection(network_name)
+            w3 = conn.get_web3()
+
+            print(f"[âœ“] Conectado com sucesso ao RPC: {conn.rpc_url}")
+
+            if conn.private_key:
+                account = w3.eth.account.from_key(conn.private_key)
+                wallet_address = account.address
+                print(f"[âœ“] Carteira carregada: {wallet_address}")
+
+                # Consulta saldo de tokens nativos
+                balance_wei = w3.eth.get_balance(wallet_address)
+                balance_eth = w3.from_wei(balance_wei, "ether")
+                print(f"[i] Saldo atual: {balance_eth} Tokens Nativos")
+            else:
+                print("[!] PRIVATE_KEY nÃ£o encontrada no ficheiro .env")
+
+        except Exception as e:
+            print(f"[âœ—] Falha ao conectar/interagir na rede '{network_name}': {e}")
+
+        print("-" * 55)
+
+
+if __name__ == "__main__":
+    test_all_connections()
+
+==================== ARQUIVO: scripts\__init__.py ====================
+
+
+==================== ARQUIVO: utils\config.py ====================
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+PRIVATE_KEY = os.getenv("PRIVATE_KEY")
+
+# DicionÃ¡rio dinÃ¢mico de redes
+NETWORKS = {
+    "portaldot_v3": {
+        "rpc": os.getenv("PORTALDOT_RPC_URL", "http://127.0.0.1:8545"),
+        "chain_id": 420420777,
+        "bridge_contract": "0x..." # Colocaremos depois
+    },
+    "sepolia_testnet": {
+        "rpc": os.getenv("SEPOLIA_RPC_URL", "https://rpc.sepolia.org"),
+        "chain_id": 11155111,
+        "bridge_contract": "0x..."
+    }
+}
+
+==================== ARQUIVO: utils\__init__.py ====================
+
