@@ -194,10 +194,11 @@
             font-weight: 700;
             cursor: pointer;
             margin-top: 14px;
-            transition: background 0.2s;
+            transition: background 0.2s, opacity 0.2s;
         }
 
-        .btn-action:hover { background: #5b21b6; }
+        .btn-action:hover:not(:disabled) { background: #5b21b6; }
+        .btn-action:disabled { opacity: 0.65; cursor: not-allowed; }
 
         .status-banner {
             margin-top: 12px;
@@ -206,7 +207,13 @@
             font-size: 0.8rem;
             text-align: center;
             display: none;
-            word-break: break-all;
+            word-break: break-word;
+        }
+
+        .status-banner a {
+            color: inherit;
+            font-weight: 700;
+            text-decoration: underline;
         }
 
         .status-info { background: #e0f2fe; color: #0369a1; }
@@ -358,21 +365,37 @@
     const NETWORK_CONTRACTS = {
         11155111: {
             name: "Sepolia",
+            chainName: "Ethereum Sepolia",
+            rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+            explorer: "https://sepolia.etherscan.io",
+            nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
             token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
             bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
         },
         421614: {
             name: "Arbitrum Sepolia",
+            chainName: "Arbitrum Sepolia",
+            rpcUrl: "https://arbitrum-sepolia-rpc.publicnode.com",
+            explorer: "https://sepolia.arbiscan.io",
+            nativeCurrency: { name: "Arbitrum Sepolia ETH", symbol: "ETH", decimals: 18 },
             token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
             bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
         },
         84532: {
             name: "Base Sepolia",
+            chainName: "Base Sepolia",
+            rpcUrl: "https://base-sepolia-rpc.publicnode.com",
+            explorer: "https://sepolia.basescan.org",
+            nativeCurrency: { name: "Base Sepolia ETH", symbol: "ETH", decimals: 18 },
             token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
             bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
         },
         80002: {
             name: "Polygon Amoy",
+            chainName: "Polygon Amoy",
+            rpcUrl: "https://polygon-amoy-bor-rpc.publicnode.com",
+            explorer: "https://amoy.polygonscan.com",
+            nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
             token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
             bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
         }
@@ -394,6 +417,9 @@
     let currentMode = 'bridge';
     let activeModalTarget = 'send';
     let needsApproval = false;
+    let isSubmitting = false;
+    let latestTokenBalanceWei = ethers.BigNumber.from(0);
+    let allowanceTimer = null;
 
     let sendToken = { symbol: 'bTEST', badge: 'bT' };
     let receiveToken = { symbol: 'bTEST', badge: 'bT' };
@@ -424,6 +450,8 @@
     async function switchWalletToChain(targetChainId) {
         if (!window.ethereum || !targetChainId) return false;
         const hexChainId = "0x" + Number(targetChainId).toString(16);
+        const netCfg = NETWORK_CONTRACTS[targetChainId];
+
         try {
             await window.ethereum.request({
                 method: "wallet_switchEthereumChain",
@@ -431,12 +459,32 @@
             });
             return true;
         } catch (err) {
+            const missingChain = err && (err.code === 4902 || (err.data && err.data.originalError && err.data.originalError.code === 4902));
+            if (missingChain && netCfg) {
+                try {
+                    await window.ethereum.request({
+                        method: "wallet_addEthereumChain",
+                        params: [{
+                            chainId: hexChainId,
+                            chainName: netCfg.chainName,
+                            rpcUrls: [netCfg.rpcUrl],
+                            nativeCurrency: netCfg.nativeCurrency,
+                            blockExplorerUrls: [netCfg.explorer]
+                        }]
+                    });
+                    return true;
+                } catch (addErr) {
+                    handleWeb3Error(addErr, `Não foi possível adicionar a rede ${netCfg.name}`);
+                    return false;
+                }
+            }
             handleWeb3Error(err, `Não foi possível trocar para a rede ${targetChainId}`);
             return false;
         }
     }
 
     async function handleSourceChainChange() {
+        if (isSubmitting) return;
         const selectedChainId = getSelectedSourceChainId();
         const netCfg = NETWORK_CONTRACTS[selectedChainId];
 
@@ -461,6 +509,7 @@
             userAddress = null;
             signer = null;
             currentChainId = null;
+            latestTokenBalanceWei = ethers.BigNumber.from(0);
             const selChainId = getSelectedSourceChainId();
             const selCfg = NETWORK_CONTRACTS[selChainId];
             document.getElementById('networkBadge').innerText =
@@ -499,6 +548,7 @@
     }
 
     async function connectWallet() {
+        if (isSubmitting) return;
         showStatus("A conectar à carteira...", "info");
         if (!window.ethereum) {
             showStatus("Nenhuma carteira Web3 encontrada. Instale a MetaMask.", "error");
@@ -526,6 +576,8 @@
     }
 
     async function handleMainAction() {
+        if (isSubmitting) return;
+
         if (!userAddress) {
             await connectWallet();
             return;
@@ -572,18 +624,40 @@
             return;
         }
 
+        isSubmitting = true;
+        updateButtonState();
+
         try {
+            // Validação prévia de saldo de bTEST e saldo nativo para gás
+            const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
+            const [rawBal, nativeBal] = await Promise.all([
+                tokenContract.balanceOf(userAddress),
+                provider.getBalance(userAddress)
+            ]);
+            latestTokenBalanceWei = rawBal;
+
+            if (rawBal.lt(amountWei)) {
+                const availFormatted = parseFloat(ethers.utils.formatEther(rawBal)).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 4
+                });
+                showStatus(`Saldo insuficiente de ${sendToken.symbol}. Disponível: ${availFormatted} ${sendToken.symbol}.`, "error");
+                return;
+            }
+
+            if (nativeBal.isZero()) {
+                showStatus(`Sem saldo nativo (${netCfg.nativeCurrency.symbol}) em ${netCfg.name} para pagar a taxa de gás.`, "error");
+                return;
+            }
+
             if (needsApproval) {
                 showStatus(`A solicitar aprovação de ${sendToken.symbol} na carteira...`, "info");
-                const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, signer);
-                const tx = await tokenContract.approve(netCfg.bridge, amountWei);
+                const tx = await tokenContract.connect(signer).approve(netCfg.bridge, amountWei);
 
-                showStatus(`Aprovação enviada! Aguardando confirmação... Hash: ${tx.hash.substring(0, 12)}...`, "info");
+                showStatus(`Aprovação enviada! Aguardando confirmação... ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "info", true);
                 await tx.wait();
 
-                showStatus("Aprovação confirmada na blockchain!", "success");
+                showStatus(`Aprovação confirmada na blockchain! ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "success", true);
                 needsApproval = false;
-                updateButtonState();
             } else {
                 const bridgeContract = new ethers.Contract(netCfg.bridge, BRIDGE_ABI, signer);
 
@@ -594,24 +668,44 @@
                         return;
                     }
 
-                    showStatus(`A enviar ${amountInput} ${sendToken.symbol} para a Bridge (Origem: ${sourceChainId} → Destino: ${targetChainId})...`, "info");
+                    showStatus(`A enviar ${amountInput} ${sendToken.symbol} para a Bridge (${netCfg.name} → ${targetChainId})...`, "info");
                     const tx = await bridgeContract.bridgeTokens(netCfg.token, amountWei, targetChainId);
+                    showStatus(`Transação enviada! Aguardando confirmação... ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "info", true);
                     await tx.wait();
-                    showStatus(`Bridge confirmada na origem! O Relayer entregará no destino. Hash: ${tx.hash}`, "success");
+
+                    const dstCfg = NETWORK_CONTRACTS[targetChainId];
+                    const dstLabel = dstCfg ? dstCfg.name : targetChainId;
+                    showStatus(
+                        `Bridge confirmada em ${netCfg.name}! O Relayer entregará em ${dstLabel}. ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`,
+                        "success",
+                        true
+                    );
                     await updateBalances();
-                    await checkAllowance();
                 } else {
                     const minOut = amountWei.mul(995).div(1000);
                     showStatus("A enviar transação para o Pool de Swap...", "info");
                     const tx = await bridgeContract.swapTokens(netCfg.token, netCfg.token, amountWei, minOut);
+                    showStatus(`Swap enviado! Aguardando confirmação... ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "info", true);
                     await tx.wait();
-                    showStatus(`Swap executado com sucesso! Hash: ${tx.hash}`, "success");
+
+                    showStatus(`Swap executado com sucesso! ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "success", true);
                     await updateBalances();
                 }
             }
+
+            await checkAllowance();
         } catch (err) {
             handleWeb3Error(err, "Falha ao processar a transação");
+        } finally {
+            isSubmitting = false;
+            updateButtonState();
         }
+    }
+
+    function buildTxLinkHtml(explorerBase, txHash) {
+        if (!explorerBase || !txHash) return `Hash: ${txHash || ""}`;
+        const shortHash = `${txHash.substring(0, 10)}...${txHash.substring(txHash.length - 6)}`;
+        return `<a href="${explorerBase}/tx/${txHash}" target="_blank" rel="noopener noreferrer">Ver no Explorer (${shortHash})</a>`;
     }
 
     async function checkAllowance() {
@@ -632,9 +726,9 @@
         }
 
         try {
+            const amountWei = ethers.utils.parseEther(amountInput);
             const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
             const allowance = await tokenContract.allowance(userAddress, netCfg.bridge);
-            const amountWei = ethers.utils.parseEther(amountInput);
             needsApproval = allowance.lt(amountWei);
             updateButtonState();
         } catch (e) {
@@ -646,6 +740,7 @@
     async function updateBalances() {
         const netCfg = getActiveNetworkConfig();
         if (!userAddress || !provider || !netCfg || !isValidAddress(netCfg.token)) {
+            latestTokenBalanceWei = ethers.BigNumber.from(0);
             document.getElementById('sendBalance').innerText = "Saldo: --";
             document.getElementById('receiveBalance').innerText = "Saldo: --";
             return;
@@ -654,6 +749,7 @@
         try {
             const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
             const rawBal = await tokenContract.balanceOf(userAddress);
+            latestTokenBalanceWei = rawBal;
             const formatted = parseFloat(ethers.utils.formatEther(rawBal)).toLocaleString("pt-BR", {
                 maximumFractionDigits: 4
             });
@@ -666,23 +762,39 @@
 
     function handleWeb3Error(err, defaultPrefix) {
         console.error(err);
-        if (err.code === 4001 || err.code === "ACTION_REJECTED" || (err.message && err.message.includes("user rejected"))) {
+        if (err && (err.code === 4001 || err.code === "ACTION_REJECTED" || (err.message && err.message.includes("user rejected")))) {
             showStatus("Ação cancelada na carteira.", "error");
             return;
         }
-        if (err.code === "INSUFFICIENT_FUNDS" || (err.message && err.message.includes("insufficient funds"))) {
+        if (err && (err.code === "INSUFFICIENT_FUNDS" || (err.message && err.message.includes("insufficient funds")))) {
             showStatus("Saldo insuficiente para cobrir o valor e a taxa de gás da rede.", "error");
             return;
         }
-        if (err.code === "CALL_EXCEPTION") {
+        if (err && err.code === "CALL_EXCEPTION") {
             showStatus("Reversão no Smart Contract. Verifique allowance, saldo ou liquidez do contrato.", "error");
             return;
         }
-        showStatus(`${defaultPrefix}: ${err.reason || err.message || "Erro desconhecido"}`, "error");
+        const detail = (err && (err.reason || err.message)) || "Erro desconhecido";
+        showStatus(`${defaultPrefix}: ${detail}`, "error");
     }
 
     function updateButtonState() {
         const btn = document.getElementById('mainBtn');
+        const sourceSelect = document.getElementById('sourceChainSelect');
+        const targetSelect = document.getElementById('targetChainSelect');
+
+        if (sourceSelect) sourceSelect.disabled = isSubmitting;
+        if (targetSelect) targetSelect.disabled = isSubmitting;
+
+        if (isSubmitting) {
+            btn.disabled = true;
+            btn.innerText = "Processando na rede...";
+            btn.style.background = "#64748b";
+            return;
+        }
+
+        btn.disabled = false;
+
         if (!userAddress) {
             btn.innerText = "Conectar Carteira";
             btn.style.background = "#6d28d9";
@@ -697,6 +809,15 @@
             btn.style.background = "#94a3b8";
             return;
         }
+
+        try {
+            const amountWei = ethers.utils.parseEther(amountInput);
+            if (latestTokenBalanceWei && latestTokenBalanceWei.lt(amountWei)) {
+                btn.innerText = `Saldo de ${sendToken.symbol} insuficiente`;
+                btn.style.background = "#dc2626";
+                return;
+            }
+        } catch (_) {}
 
         if (needsApproval) {
             btn.innerText = `1. Aprovar ${sendToken.symbol}`;
@@ -726,10 +847,19 @@
             document.getElementById('sFiat').innerText = `US$ ${v.toFixed(2)}`;
             document.getElementById('rFiat').innerText = `US$ ${(v * 0.998).toFixed(2)}`;
         }
-        checkAllowance();
+
+        updateButtonState();
+
+        if (allowanceTimer) {
+            clearTimeout(allowanceTimer);
+        }
+        allowanceTimer = setTimeout(() => {
+            checkAllowance();
+        }, 250);
     }
 
     function invertTokens() {
+        if (isSubmitting) return;
         const temp = { ...sendToken };
         sendToken = { ...receiveToken };
         receiveToken = { ...temp };
@@ -743,6 +873,7 @@
     }
 
     function setMode(mode) {
+        if (isSubmitting) return;
         currentMode = mode;
         document.getElementById('tabBridge').classList.toggle('active', mode === 'bridge');
         document.getElementById('tabSwap').classList.toggle('active', mode === 'swap');
@@ -751,6 +882,7 @@
     }
 
     function openModal(t) {
+        if (isSubmitting) return;
         activeModalTarget = t;
         document.getElementById('mTitle').innerText = t === 'send' ? 'Trocar de (Enviar)' : 'Para (Receber)';
         document.getElementById('tokenModal').style.display = 'flex';
@@ -775,11 +907,15 @@
         handleAmountChange();
     }
 
-    function showStatus(msg, type) {
+    function showStatus(msg, type, allowHtml = false) {
         const banner = document.getElementById('statusBanner');
         banner.style.display = 'block';
         banner.className = `status-banner status-${type}`;
-        banner.innerText = msg;
+        if (allowHtml) {
+            banner.innerHTML = msg;
+        } else {
+            banner.innerText = msg;
+        }
     }
 
     function hideStatus() {

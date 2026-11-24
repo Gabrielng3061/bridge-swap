@@ -8,6 +8,7 @@
 venv/
 __pycache__/
 *.py[cod]
+.pytest_cache/
 
 # IDEs e builds locais
 .idea/
@@ -16,5 +17,7 @@ build/
 dist/
 *.egg-info/
 
-# Logs e estado local de execução (ajuste se tiver algum JSON estático que queira versionar)
+# Logs, snapshots e estado local de execução
 *.log
+snapshot_*.txt
+data/
