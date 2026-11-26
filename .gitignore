@@ -16,8 +16,11 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+artifacts/
 
 # Logs, snapshots e estado local de execução
 *.log
 snapshot_*.txt
 data/
+node_modules/
+package-lock.json

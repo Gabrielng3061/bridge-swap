@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portaldot - Multi-Chain Bridge & Swap Engine</title>
-    <!-- Biblioteca Ethers.js v5 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -233,7 +232,8 @@
         .modal-body {
             background: #ffffff;
             border-radius: 20px;
-            width: 380px;
+            width: 390px;
+            max-width: 92vw;
             padding: 20px;
             box-shadow: 0 20px 30px rgba(0,0,0,0.15);
         }
@@ -281,13 +281,12 @@
         <div class="row">
             <input type="number" id="sendVal" class="val-input" placeholder="0" min="0" step="any" oninput="handleAmountChange()">
             <button class="token-btn" onclick="openModal('send')">
-                <span class="circle" id="sBadge">bT</span>
-                <span id="sName">bTEST</span> ▾
+                <span class="circle" id="sBadge">TK</span>
+                <span id="sName">TOKEN</span> ▾
             </button>
         </div>
         <div class="fiat" id="sFiat">US$ 0,00</div>
 
-        <!-- Seleção Manual de Rede de Origem -->
         <div class="chain-select-box" id="sourceChainContainer">
             <label for="sourceChainSelect">Rede Blockchain de Origem:</label>
             <select id="sourceChainSelect" onchange="handleSourceChainChange()">
@@ -299,7 +298,7 @@
         </div>
     </div>
 
-    <!-- Inverter Tokens -->
+    <!-- Inverter -->
     <div class="swap-divider">
         <button class="invert-btn" onclick="invertTokens()">↓</button>
     </div>
@@ -313,13 +312,12 @@
         <div class="row">
             <input type="number" id="recVal" class="val-input" placeholder="0" readonly>
             <button class="token-btn" onclick="openModal('receive')">
-                <span class="circle" id="rBadge" style="background:#0284c7;">bT</span>
-                <span id="rName">bTEST</span> ▾
+                <span class="circle" id="rBadge" style="background:#0284c7;">tU</span>
+                <span id="rName">tUSDC</span> ▾
             </button>
         </div>
         <div class="fiat" id="rFiat">US$ 0,00</div>
 
-        <!-- Seleção de Rede de Destino (Alinhada ao CHAIN_ID_MAP do Relayer) -->
         <div class="chain-select-box" id="targetChainContainer">
             <label for="targetChainSelect">Rede Blockchain de Destino:</label>
             <select id="targetChainSelect">
@@ -331,10 +329,7 @@
         </div>
     </div>
 
-    <!-- Botão de Ação Principal -->
     <button id="mainBtn" class="btn-action" onclick="handleMainAction()">Conectar Carteira</button>
-
-    <!-- Banner de Diagnóstico e Estado -->
     <div id="statusBanner" class="status-banner"></div>
 </div>
 
@@ -345,59 +340,57 @@
             <span id="mTitle">Selecionar Token</span>
             <button class="close-btn" onclick="closeModal()">✕</button>
         </div>
-
-        <div class="item" onclick="selectToken('bTEST', 'bT')">
-            <span class="circle">bT</span>
-            <div>
-                <strong>bTEST</strong>
-                <div style="font-size:0.75rem; color:#64748b;">Bridge Test Token (Testnet)</div>
-            </div>
-        </div>
+        <div id="tokenListContainer"></div>
     </div>
 </div>
 
 <script>
-    // ----------------------------------------------------
-    // CONFIGURAÇÕES POR REDE (PORTALDOT TESTNETS)
-    // ----------------------------------------------------
     const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
     const NETWORK_CONTRACTS = {
         11155111: {
+            chainId: 11155111,
             name: "Sepolia",
             chainName: "Ethereum Sepolia",
             rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
             explorer: "https://sepolia.etherscan.io",
             nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
-            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
-            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+            token: "0x4E71f6B47D5400202c519C8994033ADeeDf10fd5",
+            swapToken: "0x8D308ba913D32704Fcf8d7B29a8798ba0925FA5a",
+            bridge: "0x535387553a6A88201Ed92e3858F762CDFf1D3195"
         },
         421614: {
+            chainId: 421614,
             name: "Arbitrum Sepolia",
             chainName: "Arbitrum Sepolia",
             rpcUrl: "https://arbitrum-sepolia-rpc.publicnode.com",
             explorer: "https://sepolia.arbiscan.io",
             nativeCurrency: { name: "Arbitrum Sepolia ETH", symbol: "ETH", decimals: 18 },
-            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
-            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+            token: "0x22FB41807fEd50c1F5bB3a84525397010706Dc11",
+            swapToken: "0xe47F51e7b88c801190ED1e8b3CF82ce614F491A4",
+            bridge: "0x774b5bEcA52D1f4A16A46c81806915C977A0B2d7"
         },
         84532: {
+            chainId: 84532,
             name: "Base Sepolia",
             chainName: "Base Sepolia",
             rpcUrl: "https://base-sepolia-rpc.publicnode.com",
             explorer: "https://sepolia.basescan.org",
             nativeCurrency: { name: "Base Sepolia ETH", symbol: "ETH", decimals: 18 },
-            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
-            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+            token: "0x543f2466551621907dC14216796cAa03b982c4Be",
+            swapToken: "0x4E71f6B47D5400202c519C8994033ADeeDf10fd5",
+            bridge: "0xf452E2CfA64a577F127D67D4E7d422Aa2C6CFD1f"
         },
         80002: {
+            chainId: 80002,
             name: "Polygon Amoy",
             chainName: "Polygon Amoy",
             rpcUrl: "https://polygon-amoy-bor-rpc.publicnode.com",
             explorer: "https://amoy.polygonscan.com",
             nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
-            token: "0xfcd881EfE43631E31d54b3E04712CaC91AFBC899",
-            bridge: "0xf4477C7d1BdD4BC2bc7a8a98658614ec28972e63"
+            token: "0xF008dffEe43459015144575B6851866733EBe72e",
+            swapToken: "0x732263743ef2Ac9066cAbb7752293382aaDe0928",
+            bridge: "0xBC4D387976074F3443e1b4a11F2476c7166B3E5E"
         }
     };
 
@@ -421,8 +414,62 @@
     let latestTokenBalanceWei = ethers.BigNumber.from(0);
     let allowanceTimer = null;
 
-    let sendToken = { symbol: 'bTEST', badge: 'bT' };
-    let receiveToken = { symbol: 'bTEST', badge: 'bT' };
+    let sendTokenKey = 'main';
+    let receiveTokenKey = 'swap';
+
+    function getTokensForNetwork(netCfg) {
+        if (!netCfg) return [];
+        const list = [];
+        if (isValidAddress(netCfg.token)) {
+            list.push({
+                key: 'main',
+                symbol: 'TOKEN',
+                badge: 'TK',
+                color: '#6d28d9',
+                label: 'Bridge Test Token (Original)',
+                address: netCfg.token
+            });
+        }
+        if (isValidAddress(netCfg.swapToken)) {
+            list.push({
+                key: 'swap',
+                symbol: 'tUSDC',
+                badge: 'tU',
+                color: '#0284c7',
+                label: 'Test Swap Token (Pool Swap)',
+                address: netCfg.swapToken
+            });
+        }
+        return list;
+    }
+
+    function getTokenMeta(netCfg, key) {
+        const tokens = getTokensForNetwork(netCfg);
+        return tokens.find(t => t.key === key) || tokens[0] || {
+            key: 'main',
+            symbol: 'TOKEN',
+            badge: 'TK',
+            color: '#6d28d9',
+            label: 'Token',
+            address: null
+        };
+    }
+
+    function renderTokenButtons() {
+        const netCfg = getActiveNetworkConfig();
+        const sMeta = getTokenMeta(netCfg, sendTokenKey);
+        const rMeta = getTokenMeta(netCfg, receiveTokenKey);
+
+        document.getElementById('sName').innerText = sMeta.symbol;
+        const sBadge = document.getElementById('sBadge');
+        sBadge.innerText = sMeta.badge;
+        sBadge.style.background = sMeta.color;
+
+        document.getElementById('rName').innerText = rMeta.symbol;
+        const rBadge = document.getElementById('rBadge');
+        rBadge.innerText = rMeta.badge;
+        rBadge.style.background = rMeta.color;
+    }
 
     function getSelectedSourceChainId() {
         const el = document.getElementById('sourceChainSelect');
@@ -433,6 +480,13 @@
         const chainId = getSelectedSourceChainId() || currentChainId;
         if (!chainId) return null;
         return NETWORK_CONTRACTS[chainId] || null;
+    }
+
+    function getReadProvider(netCfg) {
+        if (netCfg && netCfg.rpcUrl) {
+            return new ethers.providers.StaticJsonRpcProvider(netCfg.rpcUrl);
+        }
+        return provider;
     }
 
     function isValidAddress(addr) {
@@ -488,11 +542,14 @@
         const selectedChainId = getSelectedSourceChainId();
         const netCfg = NETWORK_CONTRACTS[selectedChainId];
 
+        renderTokenButtons();
+
         if (userAddress && window.ethereum && currentChainId !== selectedChainId) {
             showStatus(`Solicitando troca na carteira para ${netCfg ? netCfg.name : selectedChainId}...`, "info");
             const switched = await switchWalletToChain(selectedChainId);
             if (!switched) {
                 syncSourceSelectToChain(currentChainId);
+                renderTokenButtons();
                 return;
             }
         }
@@ -501,6 +558,7 @@
     }
 
     async function refreshSessionState(showConnectedMessage) {
+        renderTokenButtons();
         if (!window.ethereum) return;
 
         provider = new ethers.providers.Web3Provider(window.ethereum, "any");
@@ -575,6 +633,50 @@
         }
     }
 
+    async function waitForTxReceipt(netCfg, tx, timeoutMs = 45000) {
+        const directRpc = getReadProvider(netCfg);
+        const start = Date.now();
+
+        while (Date.now() - start < timeoutMs) {
+            try {
+                const receipt = await directRpc.getTransactionReceipt(tx.hash);
+                if (receipt && receipt.blockNumber) {
+                    if (receipt.status === 0) {
+                        throw new Error("Transação revertida na blockchain.");
+                    }
+                    return receipt;
+                }
+            } catch (err) {
+                if (err && err.message && err.message.includes("revertida")) {
+                    throw err;
+                }
+            }
+            await new Promise((r) => setTimeout(r, 2000));
+        }
+
+        return await tx.wait();
+    }
+
+    async function getTxOverrides(netCfg) {
+        const chainId = (netCfg && netCfg.chainId) || getSelectedSourceChainId();
+        if (chainId !== 80002) {
+            return {};
+        }
+
+        const readProvider = getReadProvider(netCfg);
+        const feeData = await readProvider.getFeeData();
+        const minTip = ethers.utils.parseUnits("30", "gwei");
+        const maxPriorityFeePerGas =
+            feeData.maxPriorityFeePerGas && feeData.maxPriorityFeePerGas.gt(minTip)
+                ? feeData.maxPriorityFeePerGas
+                : minTip;
+        const baseMaxFee = feeData.maxFeePerGas || ethers.utils.parseUnits("60", "gwei");
+        const minMaxFee = maxPriorityFeePerGas.mul(2);
+        const maxFeePerGas = baseMaxFee.gt(minMaxFee) ? baseMaxFee : minMaxFee;
+
+        return { maxPriorityFeePerGas, maxFeePerGas };
+    }
+
     async function handleMainAction() {
         if (isSubmitting) return;
 
@@ -611,8 +713,16 @@
             return;
         }
 
-        if (!isValidAddress(netCfg.token) || !isValidAddress(netCfg.bridge)) {
-            showStatus(`Endereços de token/bridge não configurados para a rede ${netCfg.name} no index.html.`, "error");
+        const sMeta = getTokenMeta(netCfg, sendTokenKey);
+        const rMeta = getTokenMeta(netCfg, receiveTokenKey);
+
+        if (!isValidAddress(sMeta.address) || !isValidAddress(netCfg.bridge)) {
+            showStatus(`Endereços de token/bridge não configurados para a rede ${netCfg.name}.`, "error");
+            return;
+        }
+
+        if (currentMode === 'swap' && (!isValidAddress(rMeta.address) || sMeta.address.toLowerCase() === rMeta.address.toLowerCase())) {
+            showStatus("No Swap, selecione dois tokens diferentes (ex.: TOKEN e tUSDC).", "error");
             return;
         }
 
@@ -628,11 +738,11 @@
         updateButtonState();
 
         try {
-            // Validação prévia de saldo de bTEST e saldo nativo para gás
-            const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
+            const readProvider = getReadProvider(netCfg);
+            const readTokenContract = new ethers.Contract(sMeta.address, ERC20_ABI, readProvider);
             const [rawBal, nativeBal] = await Promise.all([
-                tokenContract.balanceOf(userAddress),
-                provider.getBalance(userAddress)
+                readTokenContract.balanceOf(userAddress),
+                readProvider.getBalance(userAddress)
             ]);
             latestTokenBalanceWei = rawBal;
 
@@ -640,7 +750,7 @@
                 const availFormatted = parseFloat(ethers.utils.formatEther(rawBal)).toLocaleString("pt-BR", {
                     maximumFractionDigits: 4
                 });
-                showStatus(`Saldo insuficiente de ${sendToken.symbol}. Disponível: ${availFormatted} ${sendToken.symbol}.`, "error");
+                showStatus(`Saldo insuficiente de ${sMeta.symbol}. Disponível: ${availFormatted} ${sMeta.symbol}.`, "error");
                 return;
             }
 
@@ -649,12 +759,15 @@
                 return;
             }
 
+            const txOverrides = await getTxOverrides(netCfg);
+
             if (needsApproval) {
-                showStatus(`A solicitar aprovação de ${sendToken.symbol} na carteira...`, "info");
-                const tx = await tokenContract.connect(signer).approve(netCfg.bridge, amountWei);
+                const writeTokenContract = new ethers.Contract(sMeta.address, ERC20_ABI, signer);
+                showStatus(`A solicitar aprovação de ${sMeta.symbol} na carteira...`, "info");
+                const tx = await writeTokenContract.approve(netCfg.bridge, amountWei, txOverrides);
 
                 showStatus(`Aprovação enviada! Aguardando confirmação... ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "info", true);
-                await tx.wait();
+                await waitForTxReceipt(netCfg, tx);
 
                 showStatus(`Aprovação confirmada na blockchain! ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "success", true);
                 needsApproval = false;
@@ -668,10 +781,10 @@
                         return;
                     }
 
-                    showStatus(`A enviar ${amountInput} ${sendToken.symbol} para a Bridge (${netCfg.name} → ${targetChainId})...`, "info");
-                    const tx = await bridgeContract.bridgeTokens(netCfg.token, amountWei, targetChainId);
+                    showStatus(`A enviar ${amountInput} ${sMeta.symbol} para a Bridge (${netCfg.name} → ${targetChainId})...`, "info");
+                    const tx = await bridgeContract.bridgeTokens(sMeta.address, amountWei, targetChainId, txOverrides);
                     showStatus(`Transação enviada! Aguardando confirmação... ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "info", true);
-                    await tx.wait();
+                    await waitForTxReceipt(netCfg, tx);
 
                     const dstCfg = NETWORK_CONTRACTS[targetChainId];
                     const dstLabel = dstCfg ? dstCfg.name : targetChainId;
@@ -683,10 +796,10 @@
                     await updateBalances();
                 } else {
                     const minOut = amountWei.mul(995).div(1000);
-                    showStatus("A enviar transação para o Pool de Swap...", "info");
-                    const tx = await bridgeContract.swapTokens(netCfg.token, netCfg.token, amountWei, minOut);
+                    showStatus(`A enviar ${amountInput} ${sMeta.symbol} → ${rMeta.symbol} no Pool de Swap...`, "info");
+                    const tx = await bridgeContract.swapTokens(sMeta.address, rMeta.address, amountWei, minOut, txOverrides);
                     showStatus(`Swap enviado! Aguardando confirmação... ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "info", true);
-                    await tx.wait();
+                    await waitForTxReceipt(netCfg, tx);
 
                     showStatus(`Swap executado com sucesso! ${buildTxLinkHtml(netCfg.explorer, tx.hash)}`, "success", true);
                     await updateBalances();
@@ -710,7 +823,10 @@
 
     async function checkAllowance() {
         const netCfg = getActiveNetworkConfig();
-        if (!userAddress || !provider || !netCfg || !isValidAddress(netCfg.token) || !isValidAddress(netCfg.bridge)) {
+        const readProvider = getReadProvider(netCfg);
+        const sMeta = getTokenMeta(netCfg, sendTokenKey);
+
+        if (!userAddress || !readProvider || !netCfg || !isValidAddress(sMeta.address) || !isValidAddress(netCfg.bridge)) {
             needsApproval = false;
             updateButtonState();
             return;
@@ -727,7 +843,7 @@
 
         try {
             const amountWei = ethers.utils.parseEther(amountInput);
-            const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
+            const tokenContract = new ethers.Contract(sMeta.address, ERC20_ABI, readProvider);
             const allowance = await tokenContract.allowance(userAddress, netCfg.bridge);
             needsApproval = allowance.lt(amountWei);
             updateButtonState();
@@ -739,39 +855,66 @@
 
     async function updateBalances() {
         const netCfg = getActiveNetworkConfig();
-        if (!userAddress || !provider || !netCfg || !isValidAddress(netCfg.token)) {
+        const readProvider = getReadProvider(netCfg);
+        const sMeta = getTokenMeta(netCfg, sendTokenKey);
+        const rMeta = getTokenMeta(netCfg, receiveTokenKey);
+
+        if (!userAddress || !readProvider || !netCfg) {
             latestTokenBalanceWei = ethers.BigNumber.from(0);
             document.getElementById('sendBalance').innerText = "Saldo: --";
             document.getElementById('receiveBalance').innerText = "Saldo: --";
             return;
         }
 
-        try {
-            const tokenContract = new ethers.Contract(netCfg.token, ERC20_ABI, provider);
-            const rawBal = await tokenContract.balanceOf(userAddress);
-            latestTokenBalanceWei = rawBal;
-            const formatted = parseFloat(ethers.utils.formatEther(rawBal)).toLocaleString("pt-BR", {
-                maximumFractionDigits: 4
-            });
-            document.getElementById('sendBalance').innerText = `Saldo: ${formatted} ${sendToken.symbol}`;
-            document.getElementById('receiveBalance').innerText = `Saldo: ${formatted} ${receiveToken.symbol}`;
-        } catch (e) {
-            document.getElementById('sendBalance').innerText = "Saldo: erro RPC";
+        if (isValidAddress(sMeta.address)) {
+            try {
+                const sContract = new ethers.Contract(sMeta.address, ERC20_ABI, readProvider);
+                const rawBal = await sContract.balanceOf(userAddress);
+                latestTokenBalanceWei = rawBal;
+                const formatted = parseFloat(ethers.utils.formatEther(rawBal)).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 4
+                });
+                document.getElementById('sendBalance').innerText = `Saldo: ${formatted} ${sMeta.symbol}`;
+            } catch (e) {
+                document.getElementById('sendBalance').innerText = "Saldo: erro RPC";
+            }
+        } else {
+            document.getElementById('sendBalance').innerText = "Saldo: --";
+        }
+
+        if (isValidAddress(rMeta.address)) {
+            try {
+                const rContract = new ethers.Contract(rMeta.address, ERC20_ABI, readProvider);
+                const rawRecBal = await rContract.balanceOf(userAddress);
+                const formattedRec = parseFloat(ethers.utils.formatEther(rawRecBal)).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 4
+                });
+                document.getElementById('receiveBalance').innerText = `Saldo: ${formattedRec} ${rMeta.symbol}`;
+            } catch (e) {
+                document.getElementById('receiveBalance').innerText = "Saldo: erro RPC";
+            }
+        } else {
+            document.getElementById('receiveBalance').innerText = "Saldo: --";
         }
     }
 
     function handleWeb3Error(err, defaultPrefix) {
         console.error(err);
-        if (err && (err.code === 4001 || err.code === "ACTION_REJECTED" || (err.message && err.message.includes("user rejected")))) {
+        const msgText = (err && err.message) ? String(err.message).toLowerCase() : "";
+        if (msgText.includes("repriced")) {
+            showStatus("A transação foi reprecificada/substituída na carteira. Aguarde a confirmação no explorador e clique novamente.", "error");
+            return;
+        }
+        if (err && (err.code === 4001 || err.code === "ACTION_REJECTED" || msgText.includes("user rejected"))) {
             showStatus("Ação cancelada na carteira.", "error");
             return;
         }
-        if (err && (err.code === "INSUFFICIENT_FUNDS" || (err.message && err.message.includes("insufficient funds")))) {
+        if (err && (err.code === "INSUFFICIENT_FUNDS" || msgText.includes("insufficient funds"))) {
             showStatus("Saldo insuficiente para cobrir o valor e a taxa de gás da rede.", "error");
             return;
         }
         if (err && err.code === "CALL_EXCEPTION") {
-            showStatus("Reversão no Smart Contract. Verifique allowance, saldo ou liquidez do contrato.", "error");
+            showStatus("Reversão no Smart Contract. Verifique tokens distintos no swap, allowance, saldo ou liquidez do pool.", "error");
             return;
         }
         const detail = (err && (err.reason || err.message)) || "Erro desconhecido";
@@ -782,6 +925,8 @@
         const btn = document.getElementById('mainBtn');
         const sourceSelect = document.getElementById('sourceChainSelect');
         const targetSelect = document.getElementById('targetChainSelect');
+        const netCfg = getActiveNetworkConfig();
+        const sMeta = getTokenMeta(netCfg, sendTokenKey);
 
         if (sourceSelect) sourceSelect.disabled = isSubmitting;
         if (targetSelect) targetSelect.disabled = isSubmitting;
@@ -813,14 +958,14 @@
         try {
             const amountWei = ethers.utils.parseEther(amountInput);
             if (latestTokenBalanceWei && latestTokenBalanceWei.lt(amountWei)) {
-                btn.innerText = `Saldo de ${sendToken.symbol} insuficiente`;
+                btn.innerText = `Saldo de ${sMeta.symbol} insuficiente`;
                 btn.style.background = "#dc2626";
                 return;
             }
         } catch (_) {}
 
         if (needsApproval) {
-            btn.innerText = `1. Aprovar ${sendToken.symbol}`;
+            btn.innerText = `1. Aprovar ${sMeta.symbol}`;
             btn.style.background = "#d97706";
         } else {
             btn.innerText = currentMode === 'bridge' ? "2. Executar Bridge" : "2. Executar Swap";
@@ -860,15 +1005,12 @@
 
     function invertTokens() {
         if (isSubmitting) return;
-        const temp = { ...sendToken };
-        sendToken = { ...receiveToken };
-        receiveToken = { ...temp };
+        const tempKey = sendTokenKey;
+        sendTokenKey = receiveTokenKey;
+        receiveTokenKey = tempKey;
 
-        document.getElementById('sName').innerText = sendToken.symbol;
-        document.getElementById('sBadge').innerText = sendToken.badge;
-        document.getElementById('rName').innerText = receiveToken.symbol;
-        document.getElementById('rBadge').innerText = receiveToken.badge;
-
+        renderTokenButtons();
+        updateBalances();
         handleAmountChange();
     }
 
@@ -885,6 +1027,27 @@
         if (isSubmitting) return;
         activeModalTarget = t;
         document.getElementById('mTitle').innerText = t === 'send' ? 'Trocar de (Enviar)' : 'Para (Receber)';
+
+        const netCfg = getActiveNetworkConfig();
+        const tokens = getTokensForNetwork(netCfg);
+        const container = document.getElementById('tokenListContainer');
+        container.innerHTML = "";
+
+        tokens.forEach((tok) => {
+            const shortAddr = `${tok.address.substring(0, 6)}...${tok.address.substring(38)}`;
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.onclick = () => selectToken(tok.key);
+            item.innerHTML = `
+                <span class="circle" style="background:${tok.color};">${tok.badge}</span>
+                <div>
+                    <strong>${tok.symbol}</strong>
+                    <div style="font-size:0.75rem; color:#64748b;">${tok.label} (${shortAddr})</div>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+
         document.getElementById('tokenModal').style.display = 'flex';
     }
 
@@ -892,16 +1055,19 @@
         document.getElementById('tokenModal').style.display = 'none';
     }
 
-    function selectToken(symbol, badge) {
+    function selectToken(tokenKey) {
         if (activeModalTarget === 'send') {
-            sendToken = { symbol, badge };
-            document.getElementById('sName').innerText = symbol;
-            document.getElementById('sBadge').innerText = badge;
+            sendTokenKey = tokenKey;
+            if (currentMode === 'swap' && receiveTokenKey === sendTokenKey) {
+                receiveTokenKey = tokenKey === 'main' ? 'swap' : 'main';
+            }
         } else {
-            receiveToken = { symbol, badge };
-            document.getElementById('rName').innerText = symbol;
-            document.getElementById('rBadge').innerText = badge;
+            receiveTokenKey = tokenKey;
+            if (currentMode === 'swap' && sendTokenKey === receiveTokenKey) {
+                sendTokenKey = tokenKey === 'main' ? 'swap' : 'main';
+            }
         }
+        renderTokenButtons();
         closeModal();
         updateBalances();
         handleAmountChange();
@@ -932,6 +1098,10 @@
         });
         window.addEventListener("DOMContentLoaded", () => {
             refreshSessionState(false);
+        });
+    } else {
+        window.addEventListener("DOMContentLoaded", () => {
+            renderTokenButtons();
         });
     }
 </script>

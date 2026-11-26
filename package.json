@@ -1,0 +1,27 @@
+{
+  "name": "portaldot-bridge-swap",
+  "version": "1.0.0",
+  "description": "Multi-chain EVM bridge and swap contracts, relayer, and frontend for Portaldot.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gabrielng3061/bridge-swap.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Gabrielng3061/bridge-swap/issues"
+  },
+  "homepage": "https://github.com/Gabrielng3061/bridge-swap#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  }
+}

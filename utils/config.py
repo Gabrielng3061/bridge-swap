@@ -30,6 +30,7 @@ NETWORKS = {
         "fallback_rpcs": _parse_fallback_rpcs("SEPOLIA_FALLBACK_RPCS"),
         "chain_id": 11155111,
         "token_contract": _normalize_address(os.getenv("SEPOLIA_TOKEN_CONTRACT")),
+        "swap_token_contract": _normalize_address(os.getenv("SEPOLIA_SWAP_TOKEN_CONTRACT")),
         "bridge_contract": _normalize_address(os.getenv("SEPOLIA_BRIDGE_CONTRACT")),
     },
     "arbitrum_sepolia": {
@@ -37,6 +38,7 @@ NETWORKS = {
         "fallback_rpcs": _parse_fallback_rpcs("ARB_FALLBACK_RPCS"),
         "chain_id": 421614,
         "token_contract": _normalize_address(os.getenv("ARB_TOKEN_CONTRACT")),
+        "swap_token_contract": _normalize_address(os.getenv("ARB_SWAP_TOKEN_CONTRACT")),
         "bridge_contract": _normalize_address(os.getenv("ARB_BRIDGE_CONTRACT")),
     },
     "base_sepolia": {
@@ -44,6 +46,7 @@ NETWORKS = {
         "fallback_rpcs": _parse_fallback_rpcs("BASE_FALLBACK_RPCS"),
         "chain_id": 84532,
         "token_contract": _normalize_address(os.getenv("BASE_TOKEN_CONTRACT")),
+        "swap_token_contract": _normalize_address(os.getenv("BASE_SWAP_TOKEN_CONTRACT")),
         "bridge_contract": _normalize_address(os.getenv("BASE_BRIDGE_CONTRACT")),
     },
     "polygon_amoy": {
@@ -51,6 +54,7 @@ NETWORKS = {
         "fallback_rpcs": _parse_fallback_rpcs("AMOY_FALLBACK_RPCS"),
         "chain_id": 80002,
         "token_contract": _normalize_address(os.getenv("AMOY_TOKEN_CONTRACT")),
+        "swap_token_contract": _normalize_address(os.getenv("AMOY_SWAP_TOKEN_CONTRACT")),
         "bridge_contract": _normalize_address(os.getenv("AMOY_BRIDGE_CONTRACT")),
     },
 }

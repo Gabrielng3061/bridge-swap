@@ -14,6 +14,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("SimulatorEngine")
 
 
+def _send_and_wait(w3, tx: dict, private_key: str, label: str):
+    signed_tx = w3.eth.account.sign_transaction(tx, private_key)
+    raw_tx = getattr(signed_tx, "raw_transaction", None) or getattr(signed_tx, "rawTransaction")
+    tx_hash = w3.eth.send_raw_transaction(raw_tx)
+    logger.info(f"[{label}] Tx enviada: {tx_hash.hex()} — aguardando confirmação...")
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
+    if receipt.status != 1:
+        raise RuntimeError(f"[{label}] Transação falhou on-chain (status=0). Hash: {tx_hash.hex()}")
+    return receipt
+
+
 def simulate_bridge_and_swap(source_network: str, target_network: str, amount_tokens: float):
     if source_network not in NETWORKS or target_network not in NETWORKS:
         logger.error(f"Rede inválida. Disponíveis: {list(NETWORKS.keys())}")
@@ -22,7 +33,12 @@ def simulate_bridge_and_swap(source_network: str, target_network: str, amount_to
     token_addr = NETWORKS[source_network].get("token_contract")
     bridge_addr = NETWORKS[source_network].get("bridge_contract")
 
-    if not token_addr or not bridge_addr or "0x00000000" in token_addr or "0x00000000" in bridge_addr:
+    if (
+        not token_addr
+        or not bridge_addr
+        or "0x00000000" in token_addr.lower()
+        or "0x00000000" in bridge_addr.lower()
+    ):
         logger.error(f"Endereços dos contratos não configurados no .env para {source_network}!")
         return
 
@@ -44,36 +60,39 @@ def simulate_bridge_and_swap(source_network: str, target_network: str, amount_to
     # 1. Passo: Aprovação ERC-20 (Approve)
     current_allowance = token_contract.functions.allowance(account.address, checksum_bridge).call()
     if current_allowance < amount_wei:
-        logger.info(f"1. A aprovar {amount_tokens} bTEST para o contrato de Bridge em {source_network}...")
+        logger.info(f"1. Aprovando {amount_tokens} tokens para o Bridge em {source_network}...")
         approve_tx = token_contract.functions.approve(checksum_bridge, amount_wei).build_transaction({
             "chainId": source_chain_id,
             "from": account.address,
-            "nonce": w3.eth.get_transaction_count(account.address),
+            "nonce": w3.eth.get_transaction_count(account.address, "pending"),
             "gasPrice": safe_gas_price,
         })
-        signed_approve = w3.eth.account.sign_transaction(approve_tx, conn.private_key)
-        tx_approve_hash = w3.eth.send_raw_transaction(signed_approve.raw_transaction)
-        w3.eth.wait_for_transaction_receipt(tx_approve_hash)
-        logger.info(f"[✓] Aprovação confirmada! Hash: {tx_approve_hash.hex()}")
+        approve_receipt = _send_and_wait(w3, approve_tx, conn.private_key, "approve")
+        logger.info(f"[✓] Aprovação confirmada! Hash: {approve_receipt.transactionHash.hex()}")
 
-        while token_contract.functions.allowance(account.address, checksum_bridge).call() < amount_wei:
-            logger.info("A aguardar sincronização do allowance no nó RPC...")
+        for _ in range(15):
+            if token_contract.functions.allowance(account.address, checksum_bridge).call() >= amount_wei:
+                break
+            logger.info("Aguardando sincronização do allowance no nó RPC...")
             time.sleep(2)
     else:
-        logger.info("1. Allowance já aprovado anteriormente. A avançar para o trancamento...")
+        logger.info("1. Allowance já aprovado anteriormente. Avançando para o bridge...")
 
     # 2. Passo: Execução do Bridge (bridgeTokens)
-    logger.info(f"2. A trancar {amount_tokens} bTEST com destino à rede {target_network} (Chain ID: {target_chain_id})...")
-    bridge_tx = bridge_contract.functions.bridgeTokens(checksum_token, amount_wei, target_chain_id).build_transaction({
+    logger.info(
+        f"2. Bloqueando {amount_tokens} tokens com destino à rede {target_network} "
+        f"(Chain ID: {target_chain_id})..."
+    )
+    bridge_tx = bridge_contract.functions.bridgeTokens(
+        checksum_token, amount_wei, target_chain_id
+    ).build_transaction({
         "chainId": source_chain_id,
         "from": account.address,
-        "nonce": w3.eth.get_transaction_count(account.address),
+        "nonce": w3.eth.get_transaction_count(account.address, "pending"),
         "gasPrice": safe_gas_price,
     })
-    signed_bridge = w3.eth.account.sign_transaction(bridge_tx, conn.private_key)
-    tx_bridge_hash = w3.eth.send_raw_transaction(signed_bridge.raw_transaction)
-    w3.eth.wait_for_transaction_receipt(tx_bridge_hash)
-    logger.info(f"[✓] Tokens trancados na Bridge com sucesso! Hash: {tx_bridge_hash.hex()}")
+    bridge_receipt = _send_and_wait(w3, bridge_tx, conn.private_key, "bridgeTokens")
+    logger.info(f"[✓] Tokens bloqueados na Bridge com sucesso! Hash: {bridge_receipt.transactionHash.hex()}")
 
 
 if __name__ == "__main__":
